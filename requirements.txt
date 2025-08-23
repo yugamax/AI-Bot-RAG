@@ -5,9 +5,7 @@ psycopg2-binary
 pydantic
 langchain
 langchain-groq
-langchain-huggingface
+langchain-community
 groq
 python-dotenv
 faiss-cpu
-langchain-community
-sentence-transformers

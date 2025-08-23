@@ -1,10 +1,11 @@
 import os
 from dotenv import load_dotenv
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA, LLMChain
 from langchain.prompts import PromptTemplate
 from langchain_groq import ChatGroq
+from langchain.embeddings.base import Embeddings
+import hashlib
 
 # Load environment variables
 load_dotenv()
@@ -16,8 +17,31 @@ llm = ChatGroq(
     model="llama-3.3-70b-versatile"
 )
 
-# Embeddings for vector store
-embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+# Ultra-lightweight hash-based embeddings (no model downloads)
+class TinyEmbeddings(Embeddings):
+    def __init__(self, dimension=128):
+        self.dimension = dimension
+    
+    def _text_to_vector(self, text):
+        # Create deterministic vector from text hash
+        hash_obj = hashlib.md5(text.encode())
+        hash_bytes = hash_obj.digest()
+        
+        # Convert to vector
+        vector = []
+        for i in range(self.dimension):
+            byte_idx = i % len(hash_bytes)
+            vector.append((hash_bytes[byte_idx] / 255.0) - 0.5)
+        return vector
+    
+    def embed_documents(self, texts):
+        return [self._text_to_vector(text) for text in texts]
+    
+    def embed_query(self, text):
+        return self._text_to_vector(text)
+
+# Use tiny embeddings - no downloads, minimal size
+embeddings = TinyEmbeddings(dimension=128)
 
 # Load existing FAISS index if it exists, else None
 try:
