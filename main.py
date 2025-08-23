@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
 from database import get_db, engine
-from models import Base, Document
-from rag import rag_chain, vector_store, embeddings
+from models import Base, Document, User
+from rag import rag_chain, vector_store, embeddings, insert_document
 from langchain.docstore.document import Document as LC_Document
 from langchain.vectorstores import FAISS
 from groq import Groq
@@ -36,20 +36,44 @@ app.add_middleware(
 
 chat_memory = {}  # session_id -> conversation history
 
-
 # ---------------------- Pydantic Schemas ----------------------
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    is_admin: Optional[bool] = False
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    is_admin: bool
+
 class ChatRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
-
+    user_id: Optional[int] = None
 
 class ChatResponse(BaseModel):
     answer: str
     session_id: str
 
+class DocumentCreate(BaseModel):
+    title: str
+    content: str
+    is_public: Optional[bool] = False
 
 # ---------------------- Helper Functions ----------------------
-def generate_text_response(query: str, session_id: Optional[str], db: Session):
+def get_accessible_documents(db: Session, user_id: Optional[int] = None, is_admin: bool = False):
+    if is_admin:
+        return db.query(Document).all()
+    elif user_id:
+        return db.query(Document).filter(
+            (Document.user_id == user_id) | (Document.is_public == True)
+        ).all()
+    else:
+        return db.query(Document).filter(Document.is_public == True).all()
+
+def generate_text_response(query: str, session_id: Optional[str], db: Session, user_id: Optional[int] = None):
     session_id = session_id or str(uuid.uuid4())
     if session_id not in chat_memory:
         chat_memory[session_id] = []
@@ -64,7 +88,13 @@ def generate_text_response(query: str, session_id: Optional[str], db: Session):
         "If the answer is not found in the context, let the user know."
     )
 
-    db_docs = db.query(Document).all()
+    user = None
+    is_admin = False
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        is_admin = user.is_admin if user else False
+
+    db_docs = get_accessible_documents(db, user_id, is_admin)
     db_context = "\n".join([f"Title: {doc.title}\nContent: {doc.content}" for doc in db_docs]) if db_docs else ""
 
     prompt = (
@@ -77,28 +107,38 @@ def generate_text_response(query: str, session_id: Optional[str], db: Session):
     else:
         answer = str(rag_chain.predict(question=prompt))
 
-    # Update conversation memory
     history.append({"role": "User", "text": query})
     history.append({"role": "Bot", "text": answer})
 
     return answer, session_id
 
-
 # ---------------------- API Endpoints ----------------------
+@app.post("/create_user", response_model=UserResponse)
+def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    db_user = User(username=user.username, email=user.email, is_admin=user.is_admin)
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.get("/users", response_model=list[UserResponse])
+def get_users(db: Session = Depends(get_db)):
+    return db.query(User).all()
+
 @app.post("/chat", response_model=ChatResponse)
 def chat_endpoint(request: ChatRequest, db: Session = Depends(get_db)):
-    answer, session_id = generate_text_response(request.query, request.session_id, db)
+    answer, session_id = generate_text_response(request.query, request.session_id, db, request.user_id)
     return {"answer": answer, "session_id": session_id}
 
-
 @app.post("/add_document")
-def add_document(title: str, content: str, db: Session = Depends(get_db)):
-    doc = Document(title=title, content=content)
-    db.add(doc)
-    db.commit()
-    db.refresh(doc)
+def add_document(doc: DocumentCreate, user_id: int, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    lc_doc = LC_Document(page_content=content, metadata={"title": title})
+    document = insert_document(db, doc.title, doc.content, user_id, doc.is_public)
+
+    lc_doc = LC_Document(page_content=doc.content, metadata={"title": doc.title})
     global vector_store
     if vector_store:
         vector_store.add_documents([lc_doc])
@@ -106,9 +146,18 @@ def add_document(title: str, content: str, db: Session = Depends(get_db)):
         vector_store = FAISS.from_documents([lc_doc], embeddings)
 
     FAISS.save_local(vector_store, "faiss_index")
-    return {"id": doc.id, "title": doc.title}
+    return {"id": document.id, "title": document.title}
 
+@app.get("/documents")
+def get_documents(user_id: Optional[int] = None, db: Session = Depends(get_db)):
+    user = None
+    is_admin = False
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+        is_admin = user.is_admin if user else False
 
+    docs = get_accessible_documents(db, user_id, is_admin)
+    return [{"id": doc.id, "title": doc.title, "content": doc.content, "is_public": doc.is_public, "owner": doc.owner.username if doc.owner else None} for doc in docs]
 
 @app.post("/talk", response_class=StreamingResponse)
 async def talk(audio_file: UploadFile, session_id: Optional[str] = None, db: Session = Depends(get_db)):
@@ -121,36 +170,23 @@ async def talk(audio_file: UploadFile, session_id: Optional[str] = None, db: Ses
     chat_hist = [{"role": h["role"].lower(), "content": h["text"]} for h in history]
 
     try:
-        # Determine file extension from content type
         ext = ".webm" if audio_file.content_type == "audio/webm" else ".m4a"
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as temp_audio:
             temp_audio.write(await audio_file.read())
             temp_audio_path = temp_audio.name
 
-        # Transcribe audio
-        try:
-            with open(temp_audio_path, "rb") as file:
-                transcription = clients[-1].audio.transcriptions.create(
-                    file=(temp_audio_path, file.read()),
-                    model="whisper-large-v3-turbo",
-                    response_format="verbose_json",
-                )
-        except Exception as e:
-            os.remove(temp_audio_path)
-            print(f"Transcription error: {e}")
-            raise HTTPException(status_code=500, detail=f"Transcription failed: {e}")
+        with open(temp_audio_path, "rb") as file:
+            transcription = clients[-1].audio.transcriptions.create(
+                file=(temp_audio_path, file.read()),
+                model="whisper-large-v3-turbo",
+                response_format="verbose_json",
+            )
         os.remove(temp_audio_path)
         chat_hist.append({"role": "user", "content": transcription.text})
 
-        # Generate LLM response
-        try:
-            answer, _ = generate_text_response(transcription.text, session_id, db)
-        except Exception as e:
-            print(f"LLM error: {e}")
-            raise HTTPException(status_code=500, detail=f"LLM failed: {e}")
+        answer, _ = generate_text_response(transcription.text, session_id, db)
         chat_hist.append({"role": "assistant", "content": answer})
 
-        # Generate TTS
         tts_error = None
         for client in clients:
             try:
@@ -178,7 +214,6 @@ async def talk(audio_file: UploadFile, session_id: Optional[str] = None, db: Ses
     except Exception as e:
         print(f"General error: {e}")
         raise HTTPException(status_code=500, detail=f"General error: {e}")
-
 
 # ---------------------- Main ----------------------
 if __name__ == "__main__":

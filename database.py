@@ -18,3 +18,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Helper to filter documents based on admin access
+def filter_documents(query, admin: bool):
+    if not admin:
+        # Only allow access to non-admin documents
+        query = query.filter_by(is_public=True)
+    return query
