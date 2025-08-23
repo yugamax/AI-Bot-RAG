@@ -82,10 +82,8 @@ def generate_text_response(query: str, session_id: Optional[str], db: Session, u
     conversation_context = "\n".join([f"{h['role']}: {h['text']}" for h in history])
 
     system_prompt = (
-        "You are a helpful assistant. Answer the user's question in a natural, conversational manner. "
-        "Use the provided context from the database as closely as possible. "
-        "When referencing information from the context, mention the relevant lines or phrases in double quotes. "
-        "If the answer is not found in the context, let the user know."
+        "You are a helpful assistant. Answer the user's question using context from the database. "
+        "Do NOT show raw document content directly. Summarize or quote relevant parts only."
     )
 
     user = None
@@ -94,6 +92,7 @@ def generate_text_response(query: str, session_id: Optional[str], db: Session, u
         user = db.query(User).filter(User.id == user_id).first()
         is_admin = user.is_admin if user else False
 
+    # Get only the documents this user is allowed to reference
     db_docs = get_accessible_documents(db, user_id, is_admin)
     db_context = "\n".join([f"Title: {doc.title}\nContent: {doc.content}" for doc in db_docs]) if db_docs else ""
 
@@ -147,17 +146,6 @@ def add_document(doc: DocumentCreate, user_id: int, db: Session = Depends(get_db
 
     FAISS.save_local(vector_store, "faiss_index")
     return {"id": document.id, "title": document.title}
-
-@app.get("/documents")
-def get_documents(user_id: Optional[int] = None, db: Session = Depends(get_db)):
-    user = None
-    is_admin = False
-    if user_id:
-        user = db.query(User).filter(User.id == user_id).first()
-        is_admin = user.is_admin if user else False
-
-    docs = get_accessible_documents(db, user_id, is_admin)
-    return [{"id": doc.id, "title": doc.title, "content": doc.content, "is_public": doc.is_public, "owner": doc.owner.username if doc.owner else None} for doc in docs]
 
 @app.post("/talk", response_class=StreamingResponse)
 async def talk(audio_file: UploadFile, session_id: Optional[str] = None, db: Session = Depends(get_db)):
