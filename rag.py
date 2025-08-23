@@ -8,7 +8,7 @@ from langchain_groq import ChatGroq
 
 # Load environment variables
 load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY = os.getenv("gr_api_key1")
 
 # Initialize Groq LLM
 llm = ChatGroq(

@@ -22,7 +22,7 @@ load_dotenv()
 Base.metadata.create_all(bind=engine)
 
 # Initialize Groq clients
-clients = [Groq(api_key=os.getenv(f"gr_api_key{i}")) for i in range(1, 7)]
+clients = [Groq(api_key=os.getenv(f"gr_api_key{i}")) for i in range(1,3)]
 
 app = FastAPI(title="Groq LLM RAG Chatbot with Memory")
 
