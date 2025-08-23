@@ -9,3 +9,4 @@ langchain-huggingface
 groq
 python-dotenv
 faiss-cpu
+langchain-community
