@@ -28,7 +28,7 @@ app = FastAPI(title="Groq LLM RAG Chatbot with Memory")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://status-ten-gules.vercel.app","*"],
+    allow_origins=["https://status-ten-gules.vercel.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
