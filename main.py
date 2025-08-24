@@ -86,6 +86,7 @@ def generate_text_response(query: str, session_id: Optional[str], db: Session, u
     conversation_context = "\n".join([f"{h['role']}: {h['text']}" for h in history])
 
     system_prompt = (
+        "Keep it concise."
         "You are a helpful assistant. Answer the user's question in a natural, conversational manner. "
         "Use the provided context from the database as closely as possible. "
         "When referencing information from the context, mention the relevant lines or phrases in double quotes. "
