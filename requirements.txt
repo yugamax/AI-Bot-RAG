@@ -3,9 +3,9 @@ uvicorn==0.29.0
 sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
 pydantic==2.7.1
-langchain==0.1.16
-langchain-groq==0.3.8
-langchain-community==0.0.34
+langchain
+langchain-groq
+langchain-community
 groq==0.5.0
 python-dotenv==1.0.1
 faiss-cpu

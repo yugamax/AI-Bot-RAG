@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 from database import get_db, engine
 from models import Base, Document, User
 from rag import rag_chain, vector_store, embeddings, insert_document
-from langchain.docstore.document import Document as LC_Document
-from langchain.vectorstores import FAISS
+from langchain_community.docstore.document import Document as LC_Document
+from langchain_community.vectorstores import FAISS
 from groq import Groq
 from dotenv import load_dotenv
 import uvicorn
