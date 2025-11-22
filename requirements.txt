@@ -1,5 +1,5 @@
 fastapi
-uvicorn[standard]
+uvicorn
 sqlalchemy
 psycopg2-binary
 pydantic
@@ -8,7 +8,8 @@ langchain-groq
 langchain-community
 groq
 python-dotenv
-faiss-cpu
-python-multipart
-httpx
-aiofiles
+faiss
+# Optional: Uncomment if strictly needed
+# python-multipart
+# httpx
+# aiofiles
