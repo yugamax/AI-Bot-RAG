@@ -13,7 +13,8 @@ from database import filter_documents
 load_dotenv()
 GROQ_API_KEY = os.getenv("gr_api_key1")
 
-llm = ChatGroq(api_key=GROQ_API_KEY, model="llama-3.3-70b-versatile")
+# Remove any unsupported arguments for ChatGroq
+llm = ChatGroq(api_key=GROQ_API_KEY, model="llama-3-70b")  # Use correct model name if needed
 
 # Tiny hash-based embeddings
 class TinyEmbeddings(Embeddings):
