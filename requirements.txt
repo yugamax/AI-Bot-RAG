@@ -3,9 +3,14 @@ uvicorn==0.29.0
 sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
 pydantic==2.7.1
-langchain==0.1.16
+
+# LangChain ecosystem alignment
+langchain-core==0.2.43
 langchain-groq==0.1.10
 langchain-community==0.0.34
+
 groq==0.5.0
 python-dotenv==1.0.1
+
+# FAISS: requires native deps (handled in Dockerfile below)
 faiss-cpu
